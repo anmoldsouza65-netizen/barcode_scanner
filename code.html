@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Barcode Product Scanner</title>
+    <!-- Load the html5-qrcode library from CDN -->
+    <script src="https://unpkg.com"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 20px; background: #f4f4f9; }
+        #reader { width: 100%; max-width: 500px; margin: auto; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #result { margin-top: 20px; font-size: 1.2rem; font-weight: bold; color: #333; }
+        .product-link { display: inline-block; margin-top: 10px; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <h1>Product Barcode Scanner</h1>
+    <div id="reader"></div>
+    <div id="result">Scan a product barcode to begin.</div>
+
+    <script>
+        function onScanSuccess(decodedText, decodedResult) {
+            // Display the scanned barcode number
+            document.getElementById('result').innerHTML = `
+                <p>Scanned Code: <strong>${decodedText}</strong></p>
+                <a class="product-link" href="https://google.com{decodedText}" target="_blank">Search Product on Google</a>
+            `;
+            
+            // Optional: Vibrate phone on success
+            if (navigator.vibrate) navigator.vibrate(200);
+        }
+
+        function onScanFailure(error) {
+            // Failures happen continuously while looking for a barcode. 
+            // You can ignore them to avoid flooding the console.
+        }
+
+        // Initialize the scanner with support for standard 1D product barcodes
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 10, 
+                qrbox: { width: 250, height: 150 }, // Rectangular box for barcodes
+                formatsToSupport: [ 
+                    Html5QrcodeSupportedFormats.EAN_13, 
+                    Html5QrcodeSupportedFormats.EAN_8, 
+                    Html5QrcodeSupportedFormats.UPC_A, 
+                    Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.CODE_128 
+                ]
+            },
+            /* verbose= */ false
+        );
+        
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    </script>
+</body>
+</html>
