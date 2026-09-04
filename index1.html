@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Batch Tracker & Excel Exporter</title>
+    <!-- Load Scanner and Excel Libraries from reliable CDNs -->
+    <script src="https://unpkg.com"></script>
+    <script src="https://jsdelivr.net"></script>
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --background: #f8fafc;
+            --text: #1e293b;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--background); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1, h2 { text-align: center; color: #0f172a; margin-top: 0; }
+        .section { margin-bottom: 25px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; }
+        
+        /* Flex setup for dual inputs */
+        .input-choice { display: flex; gap: 15px; margin-bottom: 15px; justify-content: center; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        button:hover { filter: brightness(0.9); }
+        button.secondary { background: #64748b; }
+        button.success { background: var(--success); }
+        
+        input[type="text"], input[type="date"], input[type="number"] { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 1rem; }
+        .form-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.9rem; }
+        
+        #reader { width: 100%; max-width: 450px; margin: 15px auto; background: #000; border-radius: 8px; overflow: hidden; display: none; }
+        #manual-entry-form, #product-details-form { display: none; }
+        
+        /* Data Table Styles */
+        .table-responsive { overflow-x: auto; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+        th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f1f5f9; color: #475569; }
+        .actions-row { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Inventory Batch Tracker</h1>
+    
+    <!-- Step 1: Choose Barcode Intake Method -->
+    <div class="section">
+        <h2>Step 1: Input Barcode</h2>
+        <div class="input-choice">
+            <button onclick="startScanner()">📷 Scan Barcode via Camera</button>
+            <button class="secondary" onclick="showManualInput()">⌨️ Enter Barcode Manually</button>
+        </div>
+        
+        <!-- Camera Scanner Target Element -->
+        <div id="reader"></div>
+        
+        <!-- Manual Barcode Input Element -->
+        <div id="manual-entry-form">
+            <div class="form-group" style="display:flex; gap:10px;">
+                <input type="text" id="manual-barcode" placeholder="Type or paste barcode number here...">
+                <button onclick="submitManualBarcode()">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Capture Product Specific Data -->
+    <div id="product-details-form" class="section" style="background: #f0fdf4; border-color: #bbf7d0;">
+        <h2>Step 2: Enter Product Details</h2>
+        <p><strong>Active Barcode:</strong> <span id="current-barcode-display" style="color:var(--success); font-weight:bold;"></span></p>
+        
+        <div class="form-group">
+            <label for="prod-mrp">Maximum Retail Price (MRP)</label>
+            <input type="number" id="prod-mrp" placeholder="Enter Price (e.g. 499.00)" step="0.01">
+        </div>
+        
+        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+                <label for="prod-mfd">Manufacturing Date (MFD)</label>
+                <input type="date" id="prod-mfd">
+            </div>
+            <div>
+                <label for="prod-exp">Expiry Date (EXP)</label>
+                <input type="date" id="prod-exp">
+            </div>
+        </div>
+        
+        <div style="text-align: right; margin-top: 15px;">
+            <button class="success" onclick="saveProductRecord()">💾 Save to Session Memory</button>
+        </div>
+    </div>
+
+    <!-- Step 3: Session Registry Table & Export -->
+    <div class="section">
+        <h2>Scanned Batches Log</h2>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Barcode ID</th>
+                        <th>MRP</th>
+                        <th>MFD</th>
+                        <th>EXP</th>
+                    </tr>
+                </thead>
+                <tbody id="inventory-table-body">
+                    <!-- Dynamic Scanned Items populate here -->
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="actions-row">
+            <button class="secondary" onclick="clearLocalStorage()">🧹 Clear Log</button>
+            <button class="success" style="font-size: 1.1rem; padding: 12px 25px;" onclick="exportToExcel()">📥 Export to Excel (.xlsx)</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let html5QrcodeScanner = null;
+    let currentBarcode = "";
+    // Load historical scans from local storage if they exist
+    let inventoryData = JSON.parse(localStorage.getItem('inventoryLog')) || [];
+
+    // Render historical records on load
+    updateTableUI();
+
+    function startScanner() {
+        document.getElementById('manual-entry-form').style.display = 'none';
+        const readerElement = document.getElementById('reader');
+        readerElement.style.display = 'block';
+
+        if (!html5QrcodeScanner) {
+            html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
+                fps: 12, 
+                qrbox: { width: 300, height: 180 },
+                formatsToSupport: [ 
+                    Html5QrcodeSupportedFormats.EAN_13, 
+                    Html5QrcodeSupportedFormats.EAN_8, 
+                    Html5QrcodeSupportedFormats.UPC_A, 
+                    Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.CODE_128 
+                ]
+            }, false);
+        }
+        
+        html5QrcodeScanner.render((decodedText) => {
+            html5QrcodeScanner.clear(); // turn camera off immediately upon discovery
+            readerElement.style.display = 'none';
+            processIntakeBarcode(decodedText);
+        }, (error) => { /* Keep scanning silently */ });
+    }
+
+    function showManualInput() {
+        if(html5QrcodeScanner) {
+            html5QrcodeScanner.clear().catch(()=>{});
+            document.getElementById('reader').style.display = 'none';
+        }
+        document.getElementById('manual-entry-form').style.display = 'block';
+    }
+
+    function submitManualBarcode() {
+        const val = document.getElementById('manual-barcode').value.trim();
+        if(!val) return alert("Please enter a valid barcode string.");
+        processIntakeBarcode(val);
+        document.getElementById('manual-barcode').value = "";
+    }
+
+    function processIntakeBarcode(barcode) {
+        currentBarcode = barcode;
+        document.getElementById('current-barcode-display').innerText = barcode;
+        document.getElementById('product-details-form').style.display = 'block';
+        
+        // Optional phone notification feedback loop
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        
+        // Focus user directly onto the price field
+        document.getElementById('prod-mrp').focus();
+    }
+
+    function saveProductRecord() {
+        const mrp = document.getElementById('prod-mrp').value.trim();
+        const mfd = document.getElementById('prod-mfd').value;
+        const exp = document.getElementById('prod-exp').value;
+
+        if(!mrp || !mfd || !exp) {
+            return alert("All details (MRP, MFD, and EXP) must be filled to commit record.");
+        }
+
+        const newRecord = {
+            Timestamp: new Date().toLocaleString(),
+            Barcode: currentBarcode,
+            MRP: parseFloat(mrp).toFixed(2),
+            MFD: mfd,
+            EXP: exp
+        };
+
+        inventoryData.push(newRecord);
+        localStorage.setItem('inventoryLog', JSON.stringify(inventoryData));
+        
+        updateTableUI();
+        
+        // Reset Workflow UI Elements back to step 1
+        document.getElementById('product-details-form').style.display = 'none';
+        document.getElementById('prod-mrp').value = "";
+        document.getElementById('prod-mfd').value = "";
+        document.getElementById('prod-exp').value = "";
+        currentBarcode = "";
+    }
+
+    function updateTableUI() {
+        const tbody = document.getElementById('inventory-table-body');
+        tbody.innerHTML = "";
+        
+        inventoryData.forEach(item => {
+            let row = `<tr>
+                <td>${item.Timestamp}</td>
+                <td><strong>${item.Barcode}</strong></td>
+                <td>${item.MRP}</td>
+                <td>${item.MFD}</td>
+                <td>${item.EXP}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        });
+    }
+
+    function clearLocalStorage() {
+        if(confirm("Are you sure you want to permanently delete all logged scanning sessions from this browser memory?")) {
+            inventoryData = [];
+            localStorage.removeItem('inventoryLog');
+            updateTableUI();
+        }
+    }
+
+    function exportToExcel() {
+        if(inventoryData.length === 0) {
